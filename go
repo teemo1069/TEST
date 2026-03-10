@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>冒險日誌：任務進度表</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- html2canvas CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        /* 載入您提供的字體檔 */
+        @font-face {
+            font-family: 'LINE Seed TW';
+            src: url('LINESeedTW_TTF_Bd.ttf') format('truetype');
+            font-weight: bold;
+            font-style: normal;
+        }
+
+        body {
+            font-family: 'LINE Seed TW', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #1a1a1a;
+            background-image: radial-gradient(#333 1px, transparent 1px);
+            background-size: 20px 20px;
+            color: #3e2723;
+            -webkit-font-smoothing: antialiased;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        /* 羊皮紙核心樣式 */
+        .parchment {
+            background: #f4e4bc;
+            background-image: url("https://www.transparenttextures.com/patterns/paper-fibers.png");
+            border: 1px solid #d4c49c;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5), inset 0 0 100px rgba(181, 146, 74, 0.2);
+            border-radius: 8px;
+            max-width: 1000px;
+            width: 100%;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header-glass {
+            background: rgba(45, 34, 23, 0.9);
+            backdrop-filter: blur(10px);
+            color: #f4e4bc;
+        }
+
+        /* 雙向凍結樣式 */
+        #table-wrapper {
+            max-height: 70vh;
+            overflow: auto;
+            border: 1px solid #d4c49c;
+            border-radius: 8px;
+            scrollbar-width: thin;
+            scrollbar-color: #8d6e63 transparent;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+
+        th, td {
+            text-align: center;
+            border-bottom: 1px solid rgba(212, 196, 156, 0.5);
+        }
+
+        .sticky-header {
+            position: sticky;
+            top: 0;
+            z-index: 40;
+        }
+
+        .sticky-col {
+            position: sticky;
+            left: 0;
+            z-index: 20;
+            background: #f4e4bc;
+        }
+
+        .sticky-corner {
+            position: sticky;
+            left: 0;
+            top: 0;
+            z-index: 50;
+        }
+
+        /* 自定義勾選框 */
+        .custom-check {
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            border: 2px solid #8d6e63;
+            background: rgba(255, 255, 255, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .custom-check.checked {
+            background: #5d4037;
+            border-color: #5d4037;
+            transform: scale(1.1);
+        }
+
+        .custom-check.checked::after {
+            content: '★';
+            color: #f4e4bc;
+            font-size: 14px;
+        }
+
+        .task-row:hover, .task-row:hover .sticky-col {
+            background: #efe0b1;
+        }
+
+        .btn-fancy {
+            background: linear-gradient(135deg, #8d6e63 0%, #5d4037 100%);
+            color: #f4e4bc;
+            border: 1px solid #4a342e;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            padding: 8px 20px;
+            border-radius: 99px;
+            font-weight: bold;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .btn-fancy:hover {
+            transform: translateY(-2px);
+            opacity: 0.9;
+        }
+
+        /* 截圖預覽 Modal */
+        #preview-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.95);
+            z-index: 100;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        #preview-modal.active {
+            display: flex;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="preview-modal">
+        <div class="parchment p-1 max-w-2xl w-full text-center">
+            <div class="p-4 bg-gray-800 text-[#f4e4bc] rounded-t-md font-bold">📜 卷軸已封存</div>
+            <div class="p-6">
+                <p class="text-gray-600 text-sm mb-4 font-bold">手持裝置請長按卷軸存檔</p>
+                <img id="screenshot-img" src="" alt="截圖預覽" class="max-w-full max-h-[60vh] mx-auto shadow-2xl rounded">
+                <button onclick="closePreview()" class="btn-fancy mt-6 w-full text-lg">收起卷軸</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="parchment" id="capture-area">
+        <div class="p-6 md:p-8 flex flex-col md:flex-row justify-between items-center gap-4 border-b border-[#d4c49c]/50">
+            <div class="text-center md:text-left">
+                <h1 class="text-3xl md:text-4xl font-bold tracking-tighter flex items-center gap-3">
+                    <span class="opacity-80">📖</span> 冒險者日誌
+                </h1>
+                <p class="text-[#8d6e63] text-sm mt-1 font-bold">The Chronicles of Quest Mastery</p>
+            </div>
+            <button onclick="takeScreenshot()" class="btn-fancy" id="snap-btn">
+                📸 封印日誌
+            </button>
+        </div>
+
+        <div class="p-2 md:p-6">
+            <div id="table-wrapper">
+                <table id="quest-table">
+                    <thead class="sticky-header" id="table-head">
+                        <!-- 由 JS 渲染 -->
+                    </thead>
+                    <tbody id="table-body">
+                        <!-- 由 JS 渲染 -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="p-4 text-center text-[#8d6e63] text-[10px] font-bold opacity-40 uppercase tracking-widest">
+            Designed for GitHub Pages • Cloud Sync Enabled
+        </div>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // 環境變數由執行環境提供
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'maple-quest-app';
+
+        // 靜態資料
+        const characters = [
+            { id: '85qu61', account: '85qu61', job: '法師', icon: '🪄' },
+            { id: '85qu614', account: '85qu614', job: '格鬥', icon: '🥊' },
+            { id: '85qu65', account: '85qu65', job: '封印', icon: '🎴' },
+            { id: '85qu612', account: '85qu612', job: '醫生', icon: '💉' }
+        ];
+
+        const taskGroups = [
+            { title: '👑 王室祕寶：公主傳說', tasks: Array.from({ length: 10 }, (_, i) => ({ id: `p${i + 1}`, name: `公主傳說 第 ${i + 1} 章` })) },
+            { 
+                title: '🗺️ 傳奇啟程：普1 + 普2', 
+                tasks: [{ id: 'pu1', name: '浮生若夢' }, { id: 'pu2', name: '迷宮冒險野郎' }, { id: 'pu3', name: '異國追跡者' }, { id: 'pu4', name: '守口如瓶' }] 
+            },
+            { title: '🏅 榮耀之路：艾爾巴勳章', tasks: Array.from({ length: 8 }, (_, i) => ({ id: `m${8 - i}`, name: `艾爾巴勳章 ${8 - i} 等` })) },
+            { title: '✨ 命運終章：天界與星詠', tasks: [{ id: 's1', name: '記憶接觸者' }, { id: 's2', name: '世界改革者' }, { id: 's3', name: '守護者' }] },
+            { title: '🎆 期間限定：新年慶典 [已完成]', tasks: [{ id: 'ny1', name: '港都守護者' }, { id: 'ny2', name: '春眠不覺曉' }, { id: 'ny3', name: '迷宮攻略者' }, { id: 'ny4', name: '污染的守護者' }] }
+        ];
+
+        const totalTasks = taskGroups.reduce((acc, g) => acc + g.tasks.length, 0);
+        let progressData = {};
+        let isAuthReady = false;
+
+        // 初始化渲染
+        function renderTable() {
+            const head = document.getElementById('table-head');
+            const body = document.getElementById('table-body');
+
+            // 渲染表頭
+            head.innerHTML = `
+                <tr class="header-glass">
+                    <th class="p-5 sticky-corner w-[130px] md:w-[180px] text-left border-b border-[#4a342e]">
+                        <div class="text-[10px] uppercase opacity-60">Quest Name</div>
+                        <div class="text-base font-bold">傳奇任務</div>
+                    </th>
+                    ${characters.map(char => {
+                        const count = Object.values(progressData[char.id] || {}).filter(Boolean).length;
+                        return `
+                            <th class="p-4 border-l border-[#4a342e]/30 border-b border-[#4a342e]">
+                                <div class="text-[10px] uppercase opacity-50 mb-1">${char.account}</div>
+                                <div class="text-xl mb-1">${char.icon}</div>
+                                <div class="text-[10px] bg-amber-200/20 px-2 py-0.5 rounded-full border border-amber-200/30 text-amber-100">
+                                    ${count} / ${totalTasks}
+                                </div>
+                            </th>
+                        `;
+                    }).join('')}
+                </tr>
+            `;
+
+            // 渲染內容
+            let html = '';
+            taskGroups.forEach(group => {
+                html += `
+                    <tr class="bg-[#8d6e63]/10">
+                        <td colspan="${characters.length + 1}" class="p-2 text-left pl-5 font-bold text-[#5d4037] text-xs uppercase tracking-[0.2em] sticky-col z-30 border-y border-[#d4c49c]/50">
+                            ${group.title}
+                        </td>
+                    </tr>
+                `;
+                group.tasks.forEach(task => {
+                    html += `
+                        <tr class="task-row border-b border-[#d4c49c]/30 transition-colors">
+                            <td class="p-4 text-left pl-6 text-[13px] text-[#3e2723] font-bold sticky-col">
+                                ${task.name}
+                            </td>
+                            ${characters.map(char => `
+                                <td class="p-1 border-l border-[#d4c49c]/20">
+                                    <div class="custom-check ${progressData[char.id]?.[task.id] ? 'checked' : ''}" 
+                                         onclick="window.toggleQuest('${char.id}', '${task.id}')">
+                                    </div>
+                                </td>
+                            `).join('')}
+                        </tr>
+                    `;
+                });
+            });
+            body.innerHTML = html;
+        }
+
+        // 全域功能
+        window.toggleQuest = async (charId, taskId) => {
+            if (!isAuthReady || !auth.currentUser) return;
+
+            const currentStatus = progressData[charId]?.[taskId] || false;
+            if (!progressData[charId]) progressData[charId] = {};
+            progressData[charId][taskId] = !currentStatus;
+
+            renderTable(); // 立即 UI 更新
+
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'userProgressCollection', 'githubVersionData');
+            try {
+                await setDoc(docRef, { progress: progressData }, { merge: true });
+            } catch (e) {
+                console.error("Error saving document: ", e);
+            }
+        };
+
+        window.takeScreenshot = async () => {
+            const btn = document.getElementById('snap-btn');
+            const wrapper = document.getElementById('table-wrapper');
+            btn.innerText = '✒️ 撰寫中...';
+            
+            // 為了完整截圖，暫時展開捲軸
+            const originalMaxHeight = wrapper.style.maxHeight;
+            const originalOverflow = wrapper.style.overflow;
+            wrapper.style.maxHeight = 'none';
+            wrapper.style.overflow = 'visible';
+
+            setTimeout(async () => {
+                const canvas = await html2canvas(document.getElementById('capture-area'), {
+                    backgroundColor: '#1a1a1a',
+                    scale: 2
+                });
+                
+                document.getElementById('screenshot-img').src = canvas.toDataURL('image/png');
+                document.getElementById('preview-modal').classList.add('active');
+                
+                wrapper.style.maxHeight = originalMaxHeight;
+                wrapper.style.overflow = originalOverflow;
+                btn.innerText = '📸 封印日誌';
+            }, 500);
+        };
+
+        window.closePreview = () => {
+            document.getElementById('preview-modal').classList.remove('active');
+        };
+
+        // Firebase 身份驗證初始化 (重要：確保 Auth 先完成)
+        const initAuth = async () => {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (e) {
+                console.error("Auth initialization failed", e);
+            }
+        };
+
+        initAuth();
+
+        // Firebase 監聽
+        onAuthStateChanged(auth, (user) => {
+            if (!user) return;
+            
+            isAuthReady = true;
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'userProgressCollection', 'githubVersionData');
+            
+            // 傳入錯誤回調以符合規範並方便除錯
+            onSnapshot(docRef, (snap) => {
+                if (snap.exists()) {
+                    progressData = snap.data().progress || {};
+                } else {
+                    // 預設新年活動完成
+                    characters.forEach(c => {
+                        progressData[c.id] = { ny1: true, ny2: true, ny3: true, ny4: true };
+                    });
+                }
+                renderTable();
+            }, (error) => {
+                console.error("Firestore snapshot error:", error);
+            });
+        });
+    </script>
+</body>
+</html>
